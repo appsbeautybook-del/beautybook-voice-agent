@@ -1,0 +1,51 @@
+# ─── Blueprint Render — Agent vocal IA ──────────────────────────────────────────
+# Déploiement en 1 clic : Render > New > Blueprint > connecter le repo.
+# Les variables marquées `sync: false` seront demandées au moment du déploiement
+# (à saisir dans le dashboard Render — jamais dans le chat ni dans le code).
+services:
+  - type: web
+    name: voice-agent-mamara
+    runtime: docker
+    # Le plan gratuit s'endort après inactivité : OK pour tester, mais pour un
+    # standard téléphonique joignable 24h/24, prends au minimum "starter".
+    plan: starter
+    healthCheckPath: /health
+    envVars:
+      - key: PORT
+        value: 3000
+      - key: NODE_ENV
+        value: production
+      # — Cerveau conversationnel : Grok —
+      - key: LLM_PROVIDER
+        value: xai
+      - key: LLM_MODEL
+        value: grok-4.20-non-reasoning-latest
+      - key: XAI_API_KEY
+        sync: false
+      # — Voix : transcription + synthèse —
+      - key: DEEPGRAM_API_KEY
+        sync: false
+      - key: ELEVENLABS_API_KEY
+        sync: false
+      # — Téléphonie Twilio —
+      - key: TWILIO_ACCOUNT_SID
+        sync: false
+      - key: TWILIO_AUTH_TOKEN
+        sync: false
+      # — BeautyBook (Supabase) —
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      # — Google Agenda (OAuth) —
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: GOOGLE_CLIENT_SECRET
+        sync: false
+      # — URL publique du service (à renseigner après le 1er déploiement,
+      # ex. https://voice-agent-mamara.onrender.com) —
+      - key: PUBLIC_BASE_URL
+        sync: false
+      # — Protection du dashboard (optionnel mais recommandé) —
+      - key: ADMIN_TOKEN
+        sync: false

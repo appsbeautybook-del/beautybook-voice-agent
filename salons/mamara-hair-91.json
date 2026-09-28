@@ -1,0 +1,16 @@
+{
+  "agent_name": "Léa",
+  "default_language": "fr",
+  "default_voice": "m5U7XCsc8v988k2RJAqN",
+  "elevenlabs_voice_id": "m5U7XCsc8v988k2RJAqN",
+  "extra_prompt": "Le salon est spécialisé dans la coiffure afro et les soins capillaires. Mettre en avant les lissages, tresses et soins profonds.",
+  "google_calendar_id": "primary",
+  "greeting": "Bonjour et bienvenue au salon Mamara Hair ! Je suis Léa, votre assistante. Comment puis-je vous aider aujourd'hui ?",
+  "name": "Mamara Hair 91",
+  "pro_email": "appsbeautybook@gmail.com",
+  "timezone": "Europe/Paris",
+  "twilio_number": "+14247283990",
+  "voices": {
+    "fr": "m5U7XCsc8v988k2RJAqN"
+  }
+}

@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Agent Vocal IA — Dashboard</title>
+<style>
+  :root { --bg:#0f0d1a; --card:#1b1830; --accent:#c084fc; --accent2:#f0abfc; --text:#f3f0ff; --muted:#a79fc9; --ok:#34d399; --warn:#fbbf24; }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  body { background:var(--bg); color:var(--text); font-family:'Segoe UI',system-ui,sans-serif; padding:24px; max-width:1100px; margin:0 auto; }
+  h1 { font-size:1.6rem; margin-bottom:4px; background:linear-gradient(90deg,var(--accent),var(--accent2)); -webkit-background-clip:text; background-clip:text; color:transparent; }
+  .sub { color:var(--muted); margin-bottom:24px; font-size:.95rem; }
+  .grid { display:grid; grid-template-columns:1fr 1fr; gap:20px; margin-bottom:24px; }
+  @media (max-width:800px){ .grid{grid-template-columns:1fr;} }
+  .card { background:var(--card); border:1px solid #2c2752; border-radius:16px; padding:20px; }
+  .card h2 { font-size:1.05rem; margin-bottom:14px; }
+  label { display:block; font-size:.82rem; color:var(--muted); margin:10px 0 4px; }
+  input, select, textarea { width:100%; background:#12102a; border:1px solid #2c2752; color:var(--text); border-radius:10px; padding:10px 12px; font-size:.95rem; }
+  textarea { min-height:70px; resize:vertical; }
+  button { margin-top:14px; background:linear-gradient(90deg,var(--accent),var(--accent2)); border:none; color:#1a1030; font-weight:700; padding:12px 20px; border-radius:12px; cursor:pointer; font-size:.95rem; }
+  button:hover { opacity:.9; }
+  button:disabled { opacity:.5; cursor:wait; }
+  .hint { font-size:.8rem; color:var(--muted); margin-top:8px; }
+  table { width:100%; border-collapse:collapse; font-size:.85rem; }
+  th { text-align:left; color:var(--muted); font-weight:600; padding:8px; border-bottom:1px solid #2c2752; }
+  td { padding:8px; border-bottom:1px solid #221f3d; vertical-align:top; }
+  .pill { display:inline-block; padding:2px 10px; border-radius:20px; font-size:.75rem; font-weight:600; }
+  .p-inbound { background:#1e3a5f; color:#7dd3fc; }
+  .p-outbound { background:#3f2d63; color:#c4b5fd; }
+  .p-qualifie { background:#064e3b; color:var(--ok); }
+  .p-non_interesse { background:#3d2b1f; color:var(--warn); }
+  .p-rappel_humain { background:#4a1f2e; color:#f9a8d4; }
+  .salon-row { display:flex; justify-content:space-between; align-items:center; padding:10px 0; border-bottom:1px solid #221f3d; font-size:.9rem; }
+  .salon-row a { color:var(--accent2); font-size:.82rem; }
+  .ok-dot { color:var(--ok); } .ko-dot { color:var(--warn); }
+  #msg { margin-top:10px; font-size:.88rem; min-height:1.2em; }
+  .err { color:#f87171; } .done { color:var(--ok); }
+  details { margin-top:6px; } summary { cursor:pointer; color:var(--muted); font-size:.8rem; }
+  .transcript { font-size:.78rem; color:var(--muted); max-height:150px; overflow:auto; margin-top:6px; }
+  .transcript b { color:var(--text); }
+</style>
+<style>
+  .voice-block { border:1px solid #2c2752; border-radius:12px; padding:14px; margin-bottom:14px; background:#141130; }
+  .voice-block h3 { font-size:.95rem; margin-bottom:8px; }
+  .voice-row { display:flex; gap:8px; margin-top:8px; align-items:center; }
+  .voice-row select { flex:0 0 130px; }
+  .voice-row button { margin:0; padding:8px 12px; font-size:.8rem; }
+  .voice-actions { display:flex; gap:10px; align-items:center; margin-top:12px; }
+  .voice-actions button { margin:0; }
+  .voice-msg { font-size:.82rem; min-height:1.2em; }
+</style>
+</head>
+<body>
+  <h1>🎙️ Agent Vocal IA</h1>
+  <p class="sub">Décroche les appels entrants, appelle les prospects, qualifie et réserve dans BeautyBook.</p>
+
+  <div class="grid">
+    <div class="card">
+      <h2>📞 Lancer un appel de test</h2>
+      <label>Salon</label>
+      <select id="salon"></select>
+      <label>Numéro à appeler (format +33612345678)</label>
+      <input id="to" placeholder="+33612345678">
+      <label>Contexte (motif de l'appel, nom du prospect…)</label>
+      <textarea id="context" placeholder="Ex : rappeler Sophie au sujet de son devis lissage"></textarea>
+      <button id="callBtn" onclick="startCall()">Lancer l'appel</button>
+      <div id="msg"></div>
+      <p class="hint">En mode essai Twilio, seuls les numéros vérifiés peuvent être appelés.</p>
+    </div>
+
+    <div class="card">
+      <h2>💈 Salons configurés</h2>
+      <div id="salons"><p class="hint">Chargement…</p></div>
+      <p class="hint" style="margin-top:12px">Connecter l'agenda Google d'un salon : ouvrez <code>/auth/google?salon=&lt;id&gt;</code> dans le navigateur.</p>
+    </div>
+  </div>
+
+  <div class="card" style="margin-bottom:24px">
+    <h2>🌍 Voix &amp; langues par salon</h2>
+    <p class="hint" style="margin-bottom:12px">Choisissez la langue parlée par défaut et une voix ElevenLabs par langue.
+    Pendant l'appel, l'agent détecte la langue de l'appelant sur sa première phrase et bascule automatiquement
+    (voix + langue). Sans voix dédiée pour la langue détectée, il utilise la langue et la voix par défaut.</p>
+    <div id="voiceConfigs"><p class="hint">Chargement…</p></div>
+  </div>
+
+  <div class="card">
+    <h2>🧾 Historique des appels <button style="margin:0 0 0 10px;padding:6px 14px;font-size:.8rem" onclick="loadLog()">↻ Actualiser</button></h2>
+    <table>
+      <thead><tr><th>Heure</th><th>Sens</th><th>Salon</th><th>Numéro</th><th>Qualification</th><th>Résumé</th></tr></thead>
+      <tbody id="log"><tr><td colspan="6" class="hint">Chargement…</td></tr></tbody>
+    </table>
+  </div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const headers = { "Content-Type": "application/json" };
+// Si ADMIN_TOKEN est défini côté serveur, renseignez-le ici :
+// headers["x-admin-token"] = "votre-token";
+
+async function api(path, opts = {}) {
+  const r = await fetch(path, { headers, ...opts });
+  if (!r.ok) throw new Error((await r.text()).slice(0, 200));
+  return r.json();
+}
+
+async function loadSalons() {
+  try {
+    const list = await api("/api/salons");
+    $("salon").innerHTML = list.map(s => `<option value="${s.id}">${s.name}</option>`).join("");
+    $("salons").innerHTML = list.map(s => `
+      <div class="salon-row">
+        <span><b>${s.name}</b><br><span class="hint">${s.twilio_number} · langue : ${s.default_language}</span></span>
+        <span>${s.google_connected ? '<span class="ok-dot">●</span> Agenda connecté' : '<span class="ko-dot">●</span> <a href="/auth/google?salon=' + s.id + '">Connecter l\'agenda</a>'}</span>
+      </div>`).join("") || '<p class="hint">Aucun salon configuré.</p>';
+    voiceState = {};
+    for (const s of list) {
+      voiceState[s.id] = { name: s.name, default_language: s.default_language || "fr", voices: s.voices || {}, default_voice: s.default_voice || "" };
+    }
+    renderVoiceConfigs();
+  } catch (e) {
+    $("salons").innerHTML = `<p class="err">${e.message}</p>`;
+    $("voiceConfigs").innerHTML = `<p class="err">${e.message}</p>`;
+  }
+}
+
+async function startCall() {
+  const btn = $("callBtn"), msg = $("msg");
+  btn.disabled = true; msg.className = ""; msg.textContent = "Appel en cours de lancement…";
+  try {
+    const r = await api("/api/calls", { method: "POST",
+      body: JSON.stringify({ to: $("to").value.trim(), salon: $("salon").value, context: $("context").value.trim() }) });
+    msg.className = "done"; msg.textContent = "✔ Appel lancé (SID " + r.callSid.slice(-8) + "). Décrochez le téléphone !";
+    setTimeout(loadLog, 3000);
+  } catch (e) { msg.className = "err"; msg.textContent = "✖ " + e.message; }
+  btn.disabled = false;
+}
+
+function pill(txt, cls) { return txt ? `<span class="pill ${cls}">${txt}</span>` : '<span class="hint">—</span>'; }
+
+async function loadLog() {
+  try {
+    const rows = await api("/api/calls/log");
+    $("log").innerHTML = rows.map(e => `
+      <tr>
+        <td>${new Date(e.startedAt).toLocaleString("fr-FR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}</td>
+        <td>${pill(e.direction === "inbound" ? "entrant" : "sortant", e.direction === "inbound" ? "p-inbound" : "p-outbound")}</td>
+        <td>${e.salonId}</td>
+        <td>${e.direction === "inbound" ? e.from : e.to}</td>
+        <td>${pill(e.qualification, "p-" + (e.qualification || ""))}</td>
+        <td>${e.summary || '<span class="hint">—</span>'}
+          ${e.transcript?.length ? `<details><summary>Transcription (${e.transcript.length})</summary><div class="transcript">${e.transcript.map(t => `<div><b>${t.role}:</b> ${t.text}</div>`).join("")}</div></details>` : ""}
+        </td>
+      </tr>`).join("") || '<tr><td colspan="6" class="hint">Aucun appel pour le moment.</td></tr>';
+  } catch (e) { $("log").innerHTML = `<tr><td colspan="6" class="err">${e.message}</td></tr>`; }
+}
+
+const LANG_OPTIONS = ["fr","en","es","de","it","pt","nl","ar","pl","ro"];
+const LANG_LABELS = { fr:"Français", en:"Anglais", es:"Espagnol", de:"Allemand", it:"Italien", pt:"Portugais", nl:"Néerlandais", ar:"Arabe", pl:"Polonais", ro:"Roumain" };
+let voiceState = {}; // salonId -> { default_language, voices:{}, default_voice }
+
+function langSelect(selected, cls) {
+  return `<select class="${cls}">` + LANG_OPTIONS.map(l =>
+    `<option value="${l}"${l === selected ? " selected" : ""}>${LANG_LABELS[l]} (${l})</option>`).join("") + `</select>`;
+}
+
+function renderVoiceConfigs() {
+  const wrap = $("voiceConfigs");
+  const ids = Object.keys(voiceState);
+  if (!ids.length) { wrap.innerHTML = '<p class="hint">Aucun salon configuré.</p>'; return; }
+  wrap.innerHTML = ids.map(id => {
+    const cfg = voiceState[id];
+    const rows = Object.entries(cfg.voices).map(([l, vid]) => `
+      <div class="voice-row" data-lang="${l}">
+        ${langSelect(l, "v-lang")}
+        <input class="v-voice" placeholder="Voice ID ElevenLabs" value="${vid.replace(/"/g, "&quot;")}">
+        <button onclick="removeVoiceRow('${id}','${l}')" title="Retirer">✕</button>
+      </div>`).join("");
+    return `
+    <div class="voice-block" id="vb-${id}">
+      <h3>💈 ${cfg.name}</h3>
+      <label>Langue parlée par défaut (accueil + repli)</label>
+      ${langSelect(cfg.default_language, "v-default-lang")}
+      <label>Voix de repli — Voice ID ElevenLabs utilisé si la langue détectée n'a pas de voix dédiée (optionnel)</label>
+      <input class="v-default-voice" placeholder="Voice ID de repli (sinon : voix principale du salon)" value="${(cfg.default_voice || "").replace(/"/g, "&quot;")}">
+      <label>Voix par langue</label>
+      <div class="v-rows">${rows || '<p class="hint">Aucune voix spécifique — cliquez « + Ajouter une langue ».</p>'}</div>
+      <div class="voice-actions">
+        <button onclick="addVoiceRow('${id}')">+ Ajouter une langue</button>
+        <button onclick="saveVoiceConfig('${id}')">💾 Enregistrer</button>
+        <span class="voice-msg" id="vm-${id}"></span>
+      </div>
+      <p class="hint">Trouvez les Voice ID dans ElevenLabs → Voices (filtrez par langue).</p>
+    </div>`;
+  }).join("");
+}
+
+function collectVoiceConfig(id) {
+  const block = $("vb-" + id);
+  const cfg = voiceState[id];
+  cfg.default_language = block.querySelector(".v-default-lang").value;
+  cfg.default_voice = block.querySelector(".v-default-voice").value.trim();
+  cfg.voices = {};
+  block.querySelectorAll(".v-rows .voice-row").forEach(row => {
+    const l = row.querySelector(".v-lang").value;
+    const vid = row.querySelector(".v-voice").value.trim();
+    if (l && vid) cfg.voices[l] = vid;
+  });
+  return cfg;
+}
+
+function addVoiceRow(id) {
+  const cfg = collectVoiceConfig(id);
+  const used = new Set(Object.keys(cfg.voices));
+  const free = LANG_OPTIONS.find(l => !used.has(l));
+  if (!free) return;
+  cfg.voices[free] = "";
+  renderVoiceConfigs();
+}
+
+function removeVoiceRow(id, lang) {
+  const cfg = collectVoiceConfig(id);
+  delete cfg.voices[lang];
+  renderVoiceConfigs();
+}
+
+async function saveVoiceConfig(id) {
+  const cfg = collectVoiceConfig(id);
+  const msg = $("vm-" + id);
+  msg.className = "voice-msg"; msg.textContent = "Enregistrement…";
+  try {
+    const r = await api("/api/salons/" + id + "/voice-config", { method: "PUT",
+      body: JSON.stringify({ default_language: cfg.default_language, voices: cfg.voices, default_voice: cfg.default_voice }) });
+    voiceState[id] = { ...voiceState[id], default_language: r.default_language, voices: r.voices, default_voice: r.default_voice };
+    renderVoiceConfigs();
+    $("vm-" + id).className = "voice-msg done"; $("vm-" + id).textContent = "✔ Enregistré.";
+  } catch (e) {
+    msg.className = "voice-msg err"; msg.textContent = "✖ " + e.message;
+  }
+}
+
+loadSalons(); loadLog();
+setInterval(loadLog, 15000);
+</script>
+</body>
+</html>
