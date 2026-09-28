@@ -24,6 +24,7 @@ import { config, salons, getSalon, reloadSalon, normalizeLang } from "./config.j
 import { incomingTwiml, outboundTwiml, startOutboundCall, maskPhone } from "./twilio.js";
 import { handleMediaConnection, sessions } from "./media.js";
 import { getCallLog, logCallStart } from "./calllog.js";
+import { loadQuestionnaires, getQuestionnairesVersion } from "./questions.js";
 import { getAuthUrl, handleOAuthCallback, saveTokens, isGoogleConnected, createCalendarEvent } from "./google.js";
 import { log } from "./logger.js";
 
@@ -277,7 +278,13 @@ app.get("/auth/google/callback", async (req, res) => {
 
 // ─── Divers ─────────────────────────────────────────────────────────────────
 
-app.get("/health", (req, res) => res.json({ ok: true, salons: salons.size, activeCalls: sessions.size }));
+app.get("/health", (req, res) => res.json({ ok: true, salons: salons.size, activeCalls: sessions.size, questionnairesVersion: getQuestionnairesVersion() }));
+
+// Rafraîchissement manuel des questions synchronisées avec BeautyBook.
+app.post("/api/questions/refresh", async (req, res) => {
+  const ok = await loadQuestionnaires();
+  res.json({ ok, version: getQuestionnairesVersion() });
+});
 
 app.use(express.static(path.join(__dirname, "..", "public")));
 
@@ -287,6 +294,12 @@ const server = app.listen(config.port, () => {
   log.info(`Serveur vocal démarré sur le port ${config.port}`);
   log.info(`Webhooks : ${config.publicBaseUrl}/voice/incoming`);
   log.info(`Dashboard : ${config.publicBaseUrl}/`);
+  // Questions de préparation synchronisées avec BeautyBook (étape 2 du parcours web).
+  loadQuestionnaires().catch((e) => log.warn(`Questionnaires : ${e.message}`));
+  // Re-synchronisation toutes les 6 heures.
+  setInterval(() => {
+    loadQuestionnaires().catch((e) => log.warn(`Questionnaires (refresh) : ${e.message}`));
+  }, 6 * 60 * 60 * 1000).unref?.();
 });
 
 // WebSocket /media (upgrade HTTP → WS sur le même port).

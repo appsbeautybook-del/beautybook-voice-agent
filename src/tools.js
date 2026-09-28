@@ -5,6 +5,7 @@
 import { getServices, getProfilPro, createReservation } from "./supabase.js";
 import { getFreeSlots, dateLabelFr, spokenTime } from "./availability.js";
 import { createCalendarEvent } from "./google.js";
+import { formatQuestionsForCall, getQuestionsForService, summarizeAnswers } from "./questions.js";
 import { log } from "./logger.js";
 
 // ─── Définitions OpenAI (JSON Schema) ───────────────────────────────────────
@@ -37,8 +38,23 @@ export const TOOL_DEFS = [
   {
     type: "function",
     function: {
+      name: "get_service_questions",
+      description: "Retourne les VRAIES questions de préparation du salon pour la catégorie du service choisi (mêmes questions que l'étape 2 du parcours de réservation BeautyBook : coiffure, tresses, ongles, maquillage...). À appeler dès que le service est choisi, AVANT de proposer les créneaux. Pose ensuite ces questions au client à l'oral, naturellement (les plus pertinentes d'abord : allergies, état, particularités), sans lire les listes de choix exhaustivement.",
+      parameters: {
+        type: "object",
+        properties: {
+          service_id: { type: "string", description: "Identifiant du service (obtenu via get_services)" },
+        },
+        required: ["service_id"],
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
       name: "book_appointment",
-      description: "Réserve le créneau. À appeler UNIQUEMENT quand le client a confirmé : son prénom/nom, le service, la date et l'heure. Vérifie que le créneau est toujours libre avant d'écrire.",
+      description: "Réserve le créneau. À appeler UNIQUEMENT quand le client a confirmé : son prénom/nom, le service, la date et l'heure. Vérifie que le créneau est toujours libre avant d'écrire. Transmets les réponses aux questions de préparation dans 'answers'.",
       parameters: {
         type: "object",
         properties: {
@@ -46,6 +62,19 @@ export const TOOL_DEFS = [
           date: { type: "string", description: "Date au format YYYY-MM-DD" },
           time_slot: { type: "string", description: "Heure au format HH:MM (ex : 10:30)" },
           client_name: { type: "string", description: "Prénom et nom du client" },
+          answers: {
+            type: "array",
+            description: "Réponses du client aux questions de préparation (get_service_questions). Chaque réponse : la question posée et la réponse donnée.",
+            items: {
+              type: "object",
+              properties: {
+                question: { type: "string" },
+                answer: { type: "string" },
+              },
+              required: ["question", "answer"],
+              additionalProperties: false,
+            },
+          },
         },
         required: ["service_id", "date", "time_slot", "client_name"],
         additionalProperties: false,
@@ -113,6 +142,17 @@ export async function runTool(ctx, name, args) {
         res.slots.map((s) => s.spoken).join(", ") + ".";
     }
 
+    case "get_service_questions": {
+      const services = ctx.servicesCache || (await getServices(salon.pro_email));
+      ctx.servicesCache = services;
+      const service = services.find((s) => String(s.id) === String(args.service_id));
+      if (!service) return "Service introuvable. Rappelle get_services pour la liste à jour.";
+      const q = formatQuestionsForCall(service);
+      ctx.lastQuestions = { service, questions: q.all };
+      return q.text +
+        `\nPose ces questions au client à l'oral, de façon naturelle et concise (les plus pertinentes d'abord : allergies, état, particularités). Ne lis pas les exemples de choix comme une liste exhaustive — propose-les seulement si le client hésite. Transmets ensuite ses réponses dans book_appointment via le paramètre answers.`;
+    }
+
     case "book_appointment": {
       const services = ctx.servicesCache || (await getServices(salon.pro_email));
       const service = services.find((s) => String(s.id) === String(args.service_id));
@@ -135,6 +175,12 @@ export async function runTool(ctx, name, args) {
       const endTimeSlot = `${String(Math.floor(endMin / 60) % 24).padStart(2, "0")}:${String(endMin % 60).padStart(2, "0")}`;
       const profil = await getProfilPro(salon.pro_email);
 
+      // Réponses aux questions de préparation (synchronisées avec BeautyBook).
+      const answersSummary = summarizeAnswers(args.answers);
+      const notes = answersSummary
+        ? `Réponses aux questions de préparation : ${answersSummary}`
+        : "";
+
       const reservation = await createReservation({
         proEmail: salon.pro_email,
         proName: profil?.nom || salon.name,
@@ -145,7 +191,7 @@ export async function runTool(ctx, name, args) {
         endTimeSlot,
         clientName: args.client_name,
         clientPhone: callerPhone || "inconnu",
-        notes: "",
+        notes,
       });
 
       // Agenda Google du salon (si connecté — sinon on continue sans bloquer).
