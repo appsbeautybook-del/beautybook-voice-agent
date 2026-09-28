@@ -24,7 +24,7 @@ import { config, salons, getSalon, reloadSalon, normalizeLang } from "./config.j
 import { incomingTwiml, outboundTwiml, startOutboundCall, maskPhone } from "./twilio.js";
 import { handleMediaConnection, sessions } from "./media.js";
 import { getCallLog, logCallStart } from "./calllog.js";
-import { getAuthUrl, handleOAuthCallback, saveTokens, isGoogleConnected } from "./google.js";
+import { getAuthUrl, handleOAuthCallback, saveTokens, isGoogleConnected, createCalendarEvent } from "./google.js";
 import { log } from "./logger.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -140,11 +140,46 @@ app.get("/api/calls/active", adminGuard, (req, res) => {
 app.get("/api/salons", adminGuard, (req, res) => {
   res.json([...salons.values()].map((s) => ({
     id: s.id, name: s.name, twilio_number: s.twilio_number,
+    pro_email: s.pro_email || null,
     default_language: s.default_language || "fr",
     voices: s.voices || {},
     default_voice: s.default_voice || "",
     google_connected: isGoogleConnected(s.id),
   })));
+});
+
+/**
+ * POST /api/calendar/event — création d'un événement Google Agenda pour un salon.
+ * Utilisé par l'assistant conversationnel (page /social-media de BeautyBook)
+ * qui réutilise la connexion Google du salon (mêmes tokens que les appels).
+ * Protégé par adminGuard (x-admin-token).
+ * Corps : { salon_id, summary, description, date (YYYY-MM-DD),
+ *           start_time (HH:MM), end_time (HH:MM), client_phone }
+ */
+app.post("/api/calendar/event", adminGuard, async (req, res) => {
+  try {
+    const { salon_id, summary, description, date, start_time, end_time, client_phone } = req.body || {};
+    if (!salon_id || !date || !start_time || !end_time) {
+      return res.status(400).json({ ok: false, error: "salon_id, date, start_time et end_time sont requis." });
+    }
+    const salon = salons.get(salon_id);
+    if (!salon) return res.status(404).json({ ok: false, error: "Salon inconnu." });
+    if (!isGoogleConnected(salon.id)) {
+      return res.json({ ok: false, error: "not_connected" });
+    }
+    const ev = await createCalendarEvent(salon, {
+      summary: summary || "Rendez-vous",
+      description,
+      date,
+      startTime: start_time,
+      endTime: end_time,
+      clientPhone: client_phone,
+    });
+    res.json({ ok: true, event_id: ev?.id || null, link: ev?.htmlLink || null });
+  } catch (e) {
+    log.error(`POST /api/calendar/event : ${e.message}`);
+    res.status(500).json({ ok: false, error: e.message });
+  }
 });
 
 /**
